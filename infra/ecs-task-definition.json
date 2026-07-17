@@ -1,0 +1,43 @@
+{
+  "family": "task-management-api",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/task-management-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/task-management-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "api",
+      "image": "placeholder",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "hostPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "DJANGO_DEBUG", "value": "false" },
+        { "name": "AWS_REGION", "value": "us-east-1" }
+      ],
+      "secrets": [
+        { "name": "DJANGO_SECRET_KEY", "valueFrom": "task-management/django-secret-key" },
+        { "name": "DATABASE_URL", "valueFrom": "task-management/database-url" },
+        { "name": "COGNITO_USER_POOL_ID", "valueFrom": "task-management/cognito-user-pool-id" },
+        { "name": "COGNITO_APP_CLIENT_ID", "valueFrom": "task-management/cognito-app-client-id" },
+        { "name": "SQS_TASK_EVENTS_URL", "valueFrom": "task-management/sqs-task-events-url" },
+        { "name": "SES_FROM_EMAIL", "valueFrom": "task-management/ses-from-email" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/task-management-api",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "api"
+        }
+      }
+    }
+  ]
+}

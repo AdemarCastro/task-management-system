@@ -7,3 +7,4 @@ factory-boy==3.3.0
 ruff==0.5.7
 freezegun==1.5.1
 responses==0.25.3
+pip-audit==2.9.0

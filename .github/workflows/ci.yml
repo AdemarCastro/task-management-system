@@ -24,7 +24,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      DJANGO_SECRET_KEY: ci-secret
+      DJANGO_SECRET_KEY: ci-secret-for-tests-32-characters-long
       DJANGO_DEBUG: "false"
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/task_manager
@@ -40,6 +40,9 @@ jobs:
       - name: Install backend dependencies
         working-directory: backend
         run: pip install -r requirements/dev.txt
+      - name: Audit backend dependencies
+        working-directory: backend
+        run: python -m pip_audit -r requirements/base.txt
       - name: Ruff
         working-directory: backend
         run: |
@@ -50,7 +53,12 @@ jobs:
         run: python manage.py migrate --noinput
       - name: Pytest
         working-directory: backend
-        run: pytest --cov=apps --cov-report=term-missing
+        run: pytest --cov=apps --cov-report=term-missing --cov-report=xml --cov-fail-under=80
+      - name: Upload backend coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
 
   frontend:
     name: Frontend quality
@@ -71,6 +79,9 @@ jobs:
       - name: Test
         working-directory: frontend
         run: npm run test
+      - name: Audit frontend dependencies
+        working-directory: frontend
+        run: npm audit --audit-level=high
       - name: Build
         working-directory: frontend
         run: npm run build
@@ -85,3 +96,14 @@ jobs:
         run: docker build ./backend
       - name: Build frontend image
         run: docker build ./frontend
+      - name: Prepare compose environment
+        run: cp .env.example .env
+      - name: Start E2E stack
+        run: docker compose up -d --build database backend frontend selenium
+      - name: Wait for frontend
+        run: curl --fail --retry 20 --retry-delay 2 http://localhost:5173
+      - name: Run Selenium journeys
+        run: docker compose run --rm e2e
+      - name: Stop E2E stack
+        if: always()
+        run: docker compose down -v --remove-orphans

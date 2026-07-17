@@ -44,7 +44,7 @@ class RegisterView(PublicAuthView):
         serializer.is_valid(raise_exception=True)
         user = UserAccount(
             email=serializer.validated_data["email"],
-            name=serializer.validated_data["name"],
+            name=serializer.validated_data.get("name", ""),
         )
         user.cognito_sub = f"local:{user.id}"
         user.set_password(serializer.validated_data["password"])

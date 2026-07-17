@@ -118,7 +118,7 @@ describe('TaskList permission-aware workspace', () => {
   it('shows actions according to role and only shares owned tasks', async () => {
     render(<TaskList />);
 
-    await screen.findByText('Owner task');
+    await screen.findAllByText('Owner task');
     const shareSelect = screen.getByRole('combobox', { name: 'Tarefa' });
     expect(within(shareSelect).getByRole('option', { name: 'Owner task' })).toBeInTheDocument();
     expect(within(shareSelect).queryByRole('option', { name: 'Editor task' })).not.toBeInTheDocument();
@@ -130,7 +130,7 @@ describe('TaskList permission-aware workspace', () => {
     expect(screen.getByText('Somente leitura')).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText('Editar tarefa Editor task'));
-    expect(screen.getByRole('combobox', { name: 'Categoria' })).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: /Categoria/ })).toBeDisabled();
     expect(screen.getByText('Somente o proprietario altera a categoria.')).toBeInTheDocument();
   });
 

@@ -66,7 +66,7 @@ O **Task Management System** permite que usuários criem, organizem, filtrem, co
 | Categorias | CRUD e vínculo por proprietário |
 | Compartilhamento | Convite com permissões `viewer` e `editor` |
 | API externa | Consulta de feriados pela BrasilAPI, com timeout, fallback e testes com mocks |
-| Cadastro e login | Amazon Cognito Managed Login com e-mail/senha e Google |
+| Cadastro e login | Autenticação local com e-mail/senha, troca e recuperação por e-mail; Cognito/Google opcional |
 | Concluir ou reabrir tarefa | Endpoints específicos com autorização por objeto |
 | Filtragem | Status, prioridade, categoria, prazo e busca textual |
 | Paginação | Paginação nativa do Django REST Framework |
@@ -80,7 +80,7 @@ O **Task Management System** permite que usuários criem, organizem, filtrem, co
 
 ## Funcionalidades
 
-- Cadastro e login por e-mail/senha ou Google.
+- Cadastro, login, logout, troca e recuperação de senha por e-mail.
 - CRUD de tarefas e categorias.
 - Prioridade, prazo, descrição, status e exclusão lógica.
 - Conclusão e reabertura de tarefas.
@@ -230,7 +230,7 @@ flowchart LR
 - Git.
 - Docker Engine 24 ou superior.
 - Docker Compose v2.
-- Configuração de desenvolvimento do Amazon Cognito para testar autenticação real.
+- Docker Desktop com Compose v2. Cognito não é necessário para validar o fluxo local.
 
 ### Inicialização
 
@@ -239,6 +239,13 @@ git clone <URL_DO_REPOSITORIO>
 cd <NOME_DO_REPOSITORIO>
 cp .env.example .env
 docker compose up --build
+```
+
+O backend executa as migrations automaticamente na inicialização. Para subir em segundo plano e acompanhar os logs:
+
+```bash
+docker compose up --build -d
+docker compose logs -f backend
 ```
 
 Serviços locais:
@@ -302,11 +309,16 @@ npm run dev
 Crie `.env` a partir de `.env.example`.
 
 ```dotenv
-DJANGO_SECRET_KEY=change-me
+DJANGO_SECRET_KEY=change-me-use-a-long-development-secret-key
 DJANGO_DEBUG=true
 DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
 DATABASE_URL=postgresql://postgres:postgres@database:5432/task_manager
 CORS_ALLOWED_ORIGINS=http://localhost:5173
+FRONTEND_PUBLIC_URL=http://localhost:5173
+EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+DEFAULT_FROM_EMAIL=no-reply@task-management.local
+PASSWORD_RESET_TIMEOUT_MINUTES=30
+LOCAL_AUTH_TOKEN_LIFETIME_MINUTES=60
 
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=
@@ -324,6 +336,8 @@ BRASIL_API_BASE_URL=https://brasilapi.com.br/api
 BRASIL_API_TIMEOUT_SECONDS=3
 
 LOG_LEVEL=INFO
+
+VITE_API_BASE_URL=/api/v1
 ```
 
 > [!CAUTION]
@@ -352,6 +366,18 @@ Prefixo padrão: `/api/v1`.
 | `DELETE` | `/shares/{id}/` | Remove compartilhamento |
 | `GET` | `/health/` | Verifica disponibilidade da API |
 | `GET` | `/readiness/` | Verifica dependências essenciais |
+
+Endpoints públicos de autenticação:
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| `POST` | `/auth/register/` | Cria conta local e retorna access token |
+| `POST` | `/auth/login/` | Valida e-mail/senha e retorna access token |
+| `GET` | `/auth/me/` | Retorna o usuário autenticado |
+| `POST` | `/auth/password/reset/request/` | Envia link de redefinição por e-mail |
+| `POST` | `/auth/password/reset/confirm/` | Consome o token e define nova senha |
+| `POST` | `/auth/password/change/` | Troca senha com sessão autenticada |
+| `POST` | `/auth/logout/` | Encerra a sessão no cliente |
 
 ### Filtros de tarefas
 
@@ -384,24 +410,28 @@ Parâmetros suportados:
 
 ## Autenticação e autorização
 
-O frontend utiliza **Cognito Managed Login** para os dois métodos de entrada:
+O fluxo padrão local utiliza conta própria para que o projeto seja executável sem AWS:
 
-- E-mail e senha armazenados e validados no Cognito User Pool.
-- Login social com Google.
+- Senhas são armazenadas somente como hash usando os hashers do Django.
+- Login, cadastro, logout, troca de senha e recuperação com token de uso único estão disponíveis na interface.
+- O backend usa `EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend` no Docker; o link aparece nos logs do backend e na resposta local de desenvolvimento.
+- O frontend envia somente o token obtido no login; requisições públicas não usam `dev-token`.
 
-O fluxo utiliza **OAuth 2.0/OIDC Authorization Code com PKCE**. O React recebe o código de autorização, troca pelo conjunto de tokens e envia o `Access Token` no cabeçalho:
+Quando as variáveis `VITE_COGNITO_*` forem configuradas, o frontend também oferece Cognito via **OAuth 2.0/OIDC Authorization Code com PKCE**. Essa integração é opcional nesta etapa e não é necessária para validar a aplicação local.
 
 ```http
 Authorization: Bearer <ACCESS_TOKEN>
 ```
 
-A API valida:
+A API valida tokens Cognito com:
 
 - assinatura pelas chaves JWKS do Cognito;
 - `exp` e validade temporal;
 - `iss` do User Pool;
 - `client_id`/audience esperado;
 - `token_use=access`.
+
+Tokens da autenticação local são JWTs HS256 assinados pelo `DJANGO_SECRET_KEY`, possuem emissor próprio, expiração curta e identificam o usuário local.
 
 ### Permissões por objeto
 
@@ -440,14 +470,15 @@ Garantias implementadas:
 
 ## Segurança
 
-- Cognito Managed Login: a aplicação não armazena senhas.
-- Authorization Code + PKCE para o frontend público.
-- Access tokens curtos e refresh tokens gerenciados pelo Cognito.
+- Hash de senhas pelo Django e tokens de recuperação de uso único.
+- `dev-token` somente é aceito quando `DJANGO_DEBUG=true`; a interface nunca o utiliza automaticamente.
+- Authorization Code + PKCE quando Cognito estiver habilitado.
+- Access tokens locais com expiração configurável; tokens Cognito continuam sob gestão do provedor.
 - Autorização por objeto em todas as operações de tarefa e compartilhamento.
 - RDS sem acesso público e restrito por Security Groups.
 - HTTPS no frontend e na API.
 - CORS restrito aos domínios autorizados.
-- Throttling/rate limiting no Django REST Framework.
+- Throttling/rate limiting nos endpoints públicos de autenticação.
 - Validação de payloads e limites de tamanho.
 - Secrets Manager em produção.
 - Logs sem senhas, tokens ou dados sensíveis.
@@ -492,9 +523,10 @@ Cobertura prioritária:
 - conclusão e reabertura;
 - filtros, ordenação e paginação;
 - compartilhamento, aceite e recusa;
-- idempotência do processamento assíncrono;
+- cadastro, login, troca e recuperação de senha;
+- auditoria de alterações com valores JSON serializáveis;
 - timeout e falha da BrasilAPI;
-- validação de JWT com chaves mockadas.
+- validação de JWT local e Cognito com chaves mockadas.
 
 ### Frontend
 
@@ -526,26 +558,22 @@ docker compose exec frontend npm run lint
 
 ## CI/CD
 
-### Pull request
+### Pull request ou push na `main`
 
 1. Ruff e verificação de formatação.
-2. Pytest com relatório de cobertura.
-3. Lint e testes do frontend.
-4. Selenium para fluxos críticos.
-5. Verificação de dependências.
+2. Pytest com cobertura mínima de 80% e artifact XML.
+3. Lint, testes, build e `npm audit` do frontend.
+4. `pip-audit` das dependências Python.
+5. Selenium para fluxos críticos.
 6. Build das imagens Docker.
 
 ### Branch `main`
 
-1. Build da imagem do backend.
-2. Push no Amazon ECR.
-3. Aplicação das migrations por tarefa controlada.
-4. Deploy no ECS Fargate.
-5. Deploy do frontend pelo Amplify.
-6. Health check pós-deploy.
-7. Rollback em caso de falha.
+O workflow de deploy AWS permanece planejado para a etapa externa desta entrega. A CI local e do GitHub valida o código, as imagens e os fluxos E2E sem provisionar AWS.
 
 ## Deploy na AWS
+
+Esta seção descreve a arquitetura planejada, mas a implementação AWS está fora do escopo desta rodada. A aplicação local não depende desses serviços.
 
 | Componente | Serviço AWS |
 |---|---|
@@ -1238,20 +1266,20 @@ Antes do envio:
 ## Limitações conhecidas
 
 - A integração de feriados é informativa e não bloqueia a criação da tarefa.
-- A revogação imediata de um access token já emitido depende da estratégia do Cognito; tokens curtos reduzem a janela de exposição.
+- A revogação imediata de um token JWT local já emitido depende da expiração; tokens curtos reduzem a janela de exposição. Cognito pode ser usado depois para revogação/refresh gerenciados.
 - O envio pelo SES pode exigir verificação de remetentes e destinatários em ambiente sandbox.
 - O projeto não utiliza Redis, Kafka, RabbitMQ ou Prometheus porque o escopo não justifica o custo operacional.
 - O C4 nível 4 não foi criado: o diagrama de classes e o código já fornecem o nível de detalhe necessário.
 
 ## Passos finais em ferramentas externas
 
-Depois que a validacao local estiver verde, finalize a entrega fora do repositorio nesta ordem:
+Depois que a validação local estiver verde, finalize a entrega fora do repositório nesta ordem. Os itens AWS ficam deliberadamente para a etapa posterior solicitada:
 
 1. **GitHub:** publique a branch `main`, confirme que o repositorio esta publico e verifique se o GitHub Actions executou `CI` com sucesso no ultimo commit.
-2. **Amazon Cognito:** crie o User Pool, habilite Managed Login, configure o app client publico sem client secret e cadastre exatamente as URLs de callback/logout do frontend publicado.
+2. **Autenticação externa (opcional):** se for substituir a autenticação local, crie o User Pool Cognito, habilite Managed Login, configure o app client público sem client secret e cadastre exatamente as URLs de callback/logout do frontend publicado.
 3. **Google Identity:** se o login Google entrar no escopo final, crie o OAuth client, configure a tela de consentimento e conecte as credenciais no Cognito como identity provider.
 4. **AWS Backend:** crie ECR, RDS PostgreSQL, SQS com DLQ, SES, ECS Fargate, ALB e Secrets Manager. Injete as variaveis do `.env.example` como secrets/vars, sem versionar credenciais.
-5. **AWS Frontend:** publique o frontend no Amplify Hosting ou servico equivalente, configure `VITE_API_BASE_URL`, `VITE_COGNITO_DOMAIN`, `VITE_COGNITO_APP_CLIENT_ID`, `VITE_COGNITO_REDIRECT_URI` e `VITE_COGNITO_LOGOUT_URI`.
+5. **AWS Frontend:** publique o frontend no Amplify Hosting ou serviço equivalente, configure `VITE_API_BASE_URL` e, somente se Cognito for habilitado, as variáveis `VITE_COGNITO_*`.
 6. **GitHub Deploy:** preencha `AWS_ROLE_TO_ASSUME`, `AWS_REGION`, `ECR_REPOSITORY`, `ECS_CLUSTER`, `ECS_SERVICE`, `ECS_CONTAINER_NAME` e as variaveis `VITE_*` usadas pelo workflow de deploy.
 7. **Banco de producao:** execute migrations no backend publicado e, se precisar preparar demonstracao, rode `python manage.py seed_demo` somente em ambiente controlado.
 8. **Smoke test publicado:** valide health, readiness, login, criacao de categoria, CRUD de tarefa, filtros, concluir/reabrir, compartilhamento e envio/registro do evento assincrono.
@@ -1263,9 +1291,10 @@ Comandos locais recomendados antes da publicacao:
 ```bash
 docker compose run --rm backend ruff check .
 docker compose run --rm backend ruff format --check .
-docker compose run --rm backend pytest --cov=apps --cov-report=term-missing
+docker compose run --rm backend pytest --cov=apps --cov-report=xml --cov-fail-under=80
 docker compose run --rm frontend npm run lint
 docker compose run --rm frontend npm run test
+docker compose run --rm frontend npm audit --audit-level=high
 docker compose run --rm frontend npm run build
 docker compose run --rm e2e
 ```

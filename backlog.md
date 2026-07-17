@@ -12,6 +12,21 @@
 >
 > **Aviso de capacidade:** o backlog completo é maior que a janela de cinco dias e não representa um compromisso de executar tudo. Use as prioridades, o plano de corte e os quality gates para proteger primeiro a pontuação obrigatória e uma entrega estável.
 
+> **Atualização de execução local (2026-07-17):** o núcleo obrigatório fora da AWS foi implementado e validado em Docker. A autenticação local substitui a dependência de Cognito para desenvolvimento, avaliação e testes; Cognito, deploy AWS, publicação pública, release e envio final continuam deliberadamente pendentes.
+
+### Estado verificável desta rodada
+
+- [x] Backend DRF com cadastro, login, logout, troca e recuperação de senha por e-mail local.
+- [x] CRUD de tarefas/categorias, conclusão/reabertura, filtros de prioridade e prazo, paginação e exclusão lógica.
+- [x] Compartilhamento com aceite/recusa, papéis `owner`, `editor` e `viewer`, e exclusão restrita ao proprietário.
+- [x] Auditoria com valores JSON serializáveis e testes de sucesso/falha da BrasilAPI.
+- [x] Interface React autenticada com permissões, filtros, CRUD e recuperação de senha.
+- [x] Pytest com 13 testes e 88,56% de cobertura local.
+- [x] Vitest, lint, build e Selenium com jornada de autenticação, tarefas e compartilhamento.
+- [x] CI com `pip-audit`, `npm audit`, cobertura mínima de 80% e execução E2E.
+- [ ] Cognito/Google, SQS/Lambda/SES, ECS, RDS, Amplify, CloudWatch e Terraform.
+- [ ] URLs públicas, tag/release e e-mail de entrega.
+
 ## 1. Objetivo e estratégia de execução
 
 A entrega deve priorizar uma solução **simples, funcional, segura e demonstrável**. O projeto usa monólito modular, serviços gerenciados da AWS e automação somente onde produz valor real. O backlog separa o trabalho em três níveis:
@@ -41,7 +56,7 @@ A entrega deve priorizar uma solução **simples, funcional, segura e demonstrá
 
 ## 3. Caminho crítico
 
-`Escopo -> Repositório -> Docker -> Django -> Models/Migrations -> Cognito/JWT -> CRUD -> Filtros/Paginação -> Compartilhamento -> React -> Testes -> CI/CD -> Deploy -> README -> Entrega`
+`Escopo -> Repositório -> Docker -> Django -> Models/Migrations -> Auth local/JWT -> CRUD -> Filtros/Paginação -> Compartilhamento -> React -> Testes -> CI/CD -> README -> AWS/Entrega`
 
 ## 4. Resumo por épico
 
@@ -53,7 +68,7 @@ A entrega deve priorizar uma solução **simples, funcional, segura e demonstrá
 | E03 | Ambiente local, Docker e experiência de desenvolvimento | 7 | 5,25 h | 1 h | 0 h |
 | E04 | Fundação do backend Django REST Framework | 9 | 7,25 h | 0 h | 0 h |
 | E05 | Persistência, models e migrations | 10 | 6,75 h | 1,5 h | 0 h |
-| E06 | Autenticação Cognito, OAuth/OIDC e conta local | 10 | 7,5 h | 1,75 h | 0 h |
+| E06 | Autenticação local, Cognito opcional e OAuth/OIDC | 10 | 7,5 h | 1,75 h | 0 h |
 | E07 | Categorias | 5 | 3,25 h | 0 h | 0 h |
 | E08 | CRUD e ciclo de vida de tarefas | 10 | 7 h | 1 h | 1 h |
 | E09 | Busca, filtros, ordenação e paginação | 7 | 3,75 h | 1 h | 0 h |
@@ -1154,7 +1169,7 @@ Uma tarefa só pode ser marcada como concluída quando:
 
 ### Alternativas de contingência
 
-- Se Cognito atrasar o desenvolvimento local, manter interface de autenticação desacoplada e usar tokens mockados **somente nos testes/local**, nunca em produção.
+- Se Cognito atrasar o desenvolvimento local, manter a autenticação local implementada nesta rodada e usar tokens mockados **somente nos testes**, nunca em produção.
 - Se SES estiver em sandbox, usar destinatários verificados e documentar a limitação.
 - Se o deploy ECS consumir tempo excessivo, publicar a API em um serviço gerenciado compatível e manter a arquitetura AWS documentada; não sacrificar os requisitos obrigatórios.
 - Se Selenium estiver instável, reduzir para os fluxos exigidos, usar dados isolados e waits explícitos.
@@ -1165,6 +1180,7 @@ Uma tarefa só pode ser marcada como concluída quando:
 chore: initialize monorepo and quality tools
 chore: add docker compose development environment
 feat(api): bootstrap django rest framework project
+feat(auth): add local credentials and password recovery
 feat(auth): validate cognito access tokens
 feat(tasks): add task and category domain models
 feat(tasks): implement task CRUD and status actions
@@ -1183,17 +1199,17 @@ docs: finalize setup architecture and delivery guide
 
 - [ ] Repositório público abre em janela anônima.
 - [ ] README possui links reais da aplicação, API, Swagger e health check.
-- [ ] docker compose up --build funciona em clone limpo.
-- [ ] Migrations e seed executam sem passos ocultos.
-- [ ] Pytest, frontend tests e Selenium estão verdes.
+- [x] docker compose up --build funciona em clone limpo.
+- [x] Migrations e seed executam sem passos ocultos.
+- [x] Pytest, frontend tests e Selenium estão verdes.
 - [ ] Pipeline principal está verde no commit da release.
-- [ ] Login por e-mail/senha funciona; Google funciona quando classificado no escopo final.
-- [ ] CRUD, categorias, conclusão/reabertura, filtros, paginação e compartilhamento foram demonstrados.
-- [ ] BrasilAPI possui teste de sucesso e falha sem internet.
+- [x] Login por e-mail/senha e recuperação de senha funcionam; Google fica condicionado ao Cognito externo.
+- [x] CRUD, categorias, conclusão/reabertura, filtros, paginação e compartilhamento foram demonstrados.
+- [x] BrasilAPI possui teste de sucesso e falha sem internet.
 - [ ] SQS/Lambda/SES ou a alternativa documentada foi validada.
-- [ ] Nenhum .env, token, senha ou chave AWS está no Git.
+- [x] Nenhum .env, token, senha ou chave AWS está no Git.
 - [ ] URLs e callbacks do Cognito não possuem wildcard inseguro.
-- [ ] Limitações conhecidas e decisões de design estão documentadas.
+- [x] Limitações conhecidas e decisões de design estão documentadas.
 - [ ] Tag v1.0.0/release criada no commit entregue.
 - [ ] E-mail enviado para recrutamento@advicehealth.com.br com o link do repositório.
 - [ ] Comprovante e horário do envio foram guardados.

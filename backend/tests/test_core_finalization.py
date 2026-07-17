@@ -8,7 +8,7 @@ from apps.accounts.models import UserAccount
 from apps.accounts.services import issue_access_token
 from apps.audit.models import AuditLog
 from apps.categories.models import Category
-from apps.sharing.models import ShareStatus, TaskShare
+from apps.sharing.models import TaskShare
 from apps.tasks.models import Task, TaskStatus
 
 
@@ -125,7 +125,6 @@ def test_editor_updates_fields_but_cannot_change_category_or_delete(monkeypatch)
         format="json",
     )
     assert category_response.status_code == 400
-
     assert editor_client.delete(f"/api/v1/tasks/{task['id']}/").status_code == 403
     assert editor_client.patch(f"/api/v1/tasks/{task['id']}/complete/").status_code == 200
 
@@ -164,10 +163,10 @@ def test_soft_deleted_task_is_hidden_and_cannot_be_used():
     stored = Task.objects.get(id=task["id"])
     assert stored.deleted_at is not None
     assert AuditLog.objects.filter(task=stored, action="task.deleted").exists()
-
     assert client.get(f"/api/v1/tasks/{task['id']}/").status_code == 404
     assert client.patch(f"/api/v1/tasks/{task['id']}/complete/").status_code == 404
-    assert task["id"] not in {item["id"] for item in client.get("/api/v1/tasks/").json()["results"]}
+    listed_ids = {item["id"] for item in client.get("/api/v1/tasks/").json()["results"]}
+    assert task["id"] not in listed_ids
 
 
 @pytest.mark.django_db
@@ -212,6 +211,7 @@ def test_sharing_validation_decisions_and_owner_cancellation():
     owner = create_user("invite-owner@example.com")
     recipient = create_user("invite-recipient@example.com")
     other = create_user("invite-other@example.com")
+    fourth_user = create_user("invite-fourth@example.com")
     owner_client = authenticated_client(owner)
     recipient_client = authenticated_client(recipient)
     other_client = authenticated_client(other)
@@ -247,7 +247,7 @@ def test_sharing_validation_decisions_and_owner_cancellation():
 
     non_owner_share = other_client.post(
         f"/api/v1/tasks/{task['id']}/shares/",
-        {"recipient_email": other.email, "permission": "viewer"},
+        {"recipient_email": fourth_user.email, "permission": "viewer"},
         format="json",
     )
     assert non_owner_share.status_code in {403, 404}
@@ -259,8 +259,7 @@ def test_sharing_validation_decisions_and_owner_cancellation():
 
 
 @pytest.mark.django_db
-def test_filters_ordering_pagination_and_user_isolation(monkeypatch, settings):
-    settings.REST_FRAMEWORK["PAGE_SIZE"] = 2
+def test_filters_ordering_pagination_and_user_isolation(monkeypatch):
     owner = create_user("filters-owner@example.com")
     other = create_user("filters-other@example.com")
     client = authenticated_client(owner)
@@ -285,23 +284,31 @@ def test_filters_ordering_pagination_and_user_isolation(monkeypatch, settings):
         assert client.post("/api/v1/tasks/", payload, format="json").status_code == 201
     assert other_client.post("/api/v1/tasks/", {"title": "Other report"}, format="json").status_code == 201
 
-    search_response = client.get("/api/v1/tasks/?search=report")
+    search_response = client.get("/api/v1/tasks/", {"search": "report"})
     assert search_response.status_code == 200
     assert search_response.json()["count"] == 2
 
-    category_response = client.get(f"/api/v1/tasks/?category={work['id']}&ordering=due_at")
+    category_response = client.get(
+        "/api/v1/tasks/",
+        {"category": work["id"], "ordering": "due_at"},
+    )
     assert category_response.json()["count"] == 2
     due_dates = [item["due_at"] for item in category_response.json()["results"]]
     assert due_dates == sorted(due_dates)
 
     combined = client.get(
-        f"/api/v1/tasks/?priority=high&category={work['id']}&due_before={(now + timedelta(days=2)).isoformat()}"
+        "/api/v1/tasks/",
+        {
+            "priority": "high",
+            "category": work["id"],
+            "due_before": (now + timedelta(days=2)).isoformat(),
+        },
     )
     assert combined.json()["count"] == 1
     assert combined.json()["results"][0]["title"] == "Alpha report"
 
-    page_one = client.get("/api/v1/tasks/?page=1&page_size=2")
-    page_two = client.get("/api/v1/tasks/?page=2&page_size=2")
+    page_one = client.get("/api/v1/tasks/", {"page": 1, "page_size": 2})
+    page_two = client.get("/api/v1/tasks/", {"page": 2, "page_size": 2})
     assert page_one.json()["count"] == 3
     assert len(page_one.json()["results"]) == 2
     assert len(page_two.json()["results"]) == 1

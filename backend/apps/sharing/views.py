@@ -16,9 +16,8 @@ class TaskShareViewSet(ModelViewSet):
 
     def get_queryset(self):
         return (
-            TaskShare.objects.filter(
-                Q(recipient=self.request.user) | Q(task__owner=self.request.user)
-            )
+            TaskShare.objects.filter(task__deleted_at__isnull=True)
+            .filter(Q(recipient=self.request.user) | Q(task__owner=self.request.user))
             .select_related("task", "recipient", "shared_by")
             .order_by("-created_at")
         )
@@ -37,22 +36,32 @@ class TaskShareViewSet(ModelViewSet):
         serializer.is_valid(raise_exception=True)
         data = dict(serializer.validated_data)
         recipient_email = data.pop("recipient_email")
-        recipient = UserAccount.objects.get(email=recipient_email)
+        recipient = UserAccount.objects.get(email=recipient_email, is_active=True)
         share = SharingService().share(
             actor=request.user,
             share=TaskShare(**data, recipient=recipient),
         )
-        return Response(TaskShareSerializer(share).data, status=status.HTTP_202_ACCEPTED)
+        response_serializer = TaskShareSerializer(
+            share,
+            context=self.get_serializer_context(),
+        )
+        return Response(response_serializer.data, status=status.HTTP_202_ACCEPTED)
 
     def update(self, request, *args, **kwargs):
         share = self.get_object()
-        if share.recipient_id != self.request.user.id:
+        if share.recipient_id != request.user.id:
             raise PermissionDenied("Only the recipient can accept or reject this invitation.")
 
         partial = kwargs.pop("partial", False)
         serializer = self.get_serializer(share, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
-        status_value = serializer.validated_data["status"]
-        serializer.save(status=status_value, responded_at=timezone.now())
+        serializer.save(responded_at=timezone.now())
 
-        return Response(TaskShareSerializer(share).data)
+        response_serializer = TaskShareSerializer(
+            share,
+            context=self.get_serializer_context(),
+        )
+        return Response(response_serializer.data)
+
+    def perform_destroy(self, instance):
+        SharingService().cancel(actor=self.request.user, share=instance)

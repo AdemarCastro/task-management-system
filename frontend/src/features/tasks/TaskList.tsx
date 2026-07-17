@@ -256,6 +256,7 @@ export function TaskList() {
           <label>
             Titulo
             <input
+              name="title"
               required
               value={taskForm.title}
               onChange={(event) => setTaskForm({ ...taskForm, title: event.target.value })}
@@ -264,6 +265,7 @@ export function TaskList() {
           <label>
             Descricao
             <textarea
+              name="description"
               value={taskForm.description}
               onChange={(event) => setTaskForm({ ...taskForm, description: event.target.value })}
             />
@@ -272,6 +274,7 @@ export function TaskList() {
             <label>
               Categoria
               <select
+                name="category"
                 value={taskForm.category}
                 onChange={(event) => setTaskForm({ ...taskForm, category: event.target.value })}
               >
@@ -286,6 +289,7 @@ export function TaskList() {
             <label>
               Prioridade
               <select
+                name="priority"
                 value={taskForm.priority}
                 onChange={(event) => setTaskForm({ ...taskForm, priority: event.target.value })}
               >
@@ -298,6 +302,7 @@ export function TaskList() {
           <label>
             Prazo
             <input
+              name="due_at"
               type="datetime-local"
               value={taskForm.due_at}
               onChange={(event) => setTaskForm({ ...taskForm, due_at: event.target.value })}
@@ -328,6 +333,7 @@ export function TaskList() {
             <div className="form-row compact">
               <input
                 aria-label="Nome da categoria"
+                name="category_name"
                 required
                 placeholder="Nome"
                 value={categoryName}
@@ -335,6 +341,7 @@ export function TaskList() {
               />
               <input
                 aria-label="Cor da categoria"
+                name="category_color"
                 type="color"
                 value={categoryColor}
                 onChange={(event) => setCategoryColor(event.target.value)}
@@ -381,6 +388,7 @@ export function TaskList() {
             <label>
               Tarefa
               <select
+                name="share_task"
                 required
                 value={shareTaskId}
                 onChange={(event) => setShareTaskId(event.target.value)}
@@ -398,6 +406,7 @@ export function TaskList() {
                 Email
                 <input
                   required
+                  name="recipient_email"
                   type="email"
                   value={recipientEmail}
                   onChange={(event) => setRecipientEmail(event.target.value)}
@@ -406,6 +415,7 @@ export function TaskList() {
               <label>
                 Permissao
                 <select
+                  name="permission"
                   value={sharePermission}
                   onChange={(event) => setSharePermission(event.target.value)}
                 >

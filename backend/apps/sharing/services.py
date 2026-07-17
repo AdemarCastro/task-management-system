@@ -1,4 +1,5 @@
 from django.db import transaction
+from rest_framework.exceptions import PermissionDenied
 
 from apps.audit.models import AuditLog
 from apps.integrations.events import TaskEventPublisher
@@ -11,9 +12,10 @@ class SharingService:
 
     def share(self, *, actor, share: TaskShare) -> TaskShare:
         if share.task.owner_id != actor.id:
-            raise PermissionError("Only the task owner can share this task.")
+            raise PermissionDenied("Only the task owner can share this task.")
 
         with transaction.atomic():
+            share.shared_by = actor
             share.save()
             AuditLog.objects.create(
                 actor=actor,

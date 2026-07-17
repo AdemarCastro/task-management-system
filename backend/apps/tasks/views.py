@@ -21,7 +21,10 @@ class TaskViewSet(ModelViewSet):
     def get_queryset(self):
         return (
             Task.objects.filter(deleted_at__isnull=True)
-            .filter(Q(owner=self.request.user) | Q(shares__recipient=self.request.user, shares__status="accepted"))
+            .filter(
+                Q(owner=self.request.user)
+                | Q(shares__recipient=self.request.user, shares__status="accepted")
+            )
             .distinct()
         )
 

@@ -1,4 +1,7 @@
+from django.db.models import Q
+from django.utils import timezone
 from rest_framework import status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
@@ -12,7 +15,13 @@ class TaskShareViewSet(ModelViewSet):
     serializer_class = TaskShareSerializer
 
     def get_queryset(self):
-        return TaskShare.objects.filter(recipient=self.request.user).select_related("task", "recipient")
+        return (
+            TaskShare.objects.filter(
+                Q(recipient=self.request.user) | Q(task__owner=self.request.user)
+            )
+            .select_related("task", "recipient", "shared_by")
+            .order_by("-created_at")
+        )
 
     def get_serializer_class(self):
         if self.action in {"partial_update", "update"}:
@@ -20,7 +29,11 @@ class TaskShareViewSet(ModelViewSet):
         return TaskShareSerializer
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+        payload = request.data.copy()
+        if kwargs.get("task_id"):
+            payload["task"] = str(kwargs["task_id"])
+
+        serializer = self.get_serializer(data=payload)
         serializer.is_valid(raise_exception=True)
         data = dict(serializer.validated_data)
         recipient_email = data.pop("recipient_email")
@@ -30,3 +43,16 @@ class TaskShareViewSet(ModelViewSet):
             share=TaskShare(**data, recipient=recipient),
         )
         return Response(TaskShareSerializer(share).data, status=status.HTTP_202_ACCEPTED)
+
+    def update(self, request, *args, **kwargs):
+        share = self.get_object()
+        if share.recipient_id != self.request.user.id:
+            raise PermissionDenied("Only the recipient can accept or reject this invitation.")
+
+        partial = kwargs.pop("partial", False)
+        serializer = self.get_serializer(share, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        status_value = serializer.validated_data["status"]
+        serializer.save(status=status_value, responded_at=timezone.now())
+
+        return Response(TaskShareSerializer(share).data)

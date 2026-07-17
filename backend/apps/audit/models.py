@@ -13,3 +13,6 @@ class AuditLog(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.action} on {self.task_id}"

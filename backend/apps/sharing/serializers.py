@@ -9,8 +9,31 @@ class TaskShareSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TaskShare
-        fields = ["id", "task", "recipient", "recipient_email", "permission", "status", "created_at"]
-        read_only_fields = ["id", "recipient", "status", "created_at"]
+        fields = [
+            "id",
+            "task",
+            "recipient",
+            "recipient_email",
+            "shared_by",
+            "permission",
+            "status",
+            "created_at",
+            "responded_at",
+        ]
+        read_only_fields = [
+            "id",
+            "recipient",
+            "shared_by",
+            "status",
+            "created_at",
+            "responded_at",
+        ]
+
+    def validate(self, attrs):
+        if self.context.get("request") and self.context["request"].method == "POST":
+            if not attrs.get("recipient_email"):
+                raise serializers.ValidationError({"recipient_email": "This field is required."})
+        return attrs
 
     def validate_recipient_email(self, value):
         if not UserAccount.objects.filter(email=value).exists():

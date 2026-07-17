@@ -11,3 +11,10 @@ router.register("tasks", TaskViewSet, basename="task")
 router.register("shares", TaskShareViewSet, basename="share")
 
 urlpatterns = [path("", include(router.urls))]
+urlpatterns += [
+    path(
+        "tasks/<uuid:task_id>/shares/",
+        TaskShareViewSet.as_view({"post": "create"}),
+        name="task-shares",
+    )
+]

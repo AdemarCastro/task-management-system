@@ -17,7 +17,11 @@ class TaskPriority(models.TextChoices):
 
 class Task(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    owner = models.ForeignKey("accounts.UserAccount", on_delete=models.CASCADE, related_name="tasks")
+    owner = models.ForeignKey(
+        "accounts.UserAccount",
+        on_delete=models.CASCADE,
+        related_name="tasks",
+    )
     category = models.ForeignKey(
         "categories.Category",
         on_delete=models.SET_NULL,
@@ -52,6 +56,9 @@ class Task(models.Model):
         ]
         ordering = ["-created_at"]
 
+    def __str__(self) -> str:
+        return self.title
+
     def complete(self) -> None:
         self.status = TaskStatus.COMPLETED
         self.version += 1
@@ -63,6 +70,3 @@ class Task(models.Model):
     def soft_delete(self) -> None:
         self.deleted_at = timezone.now()
         self.version += 1
-
-    def __str__(self) -> str:
-        return self.title

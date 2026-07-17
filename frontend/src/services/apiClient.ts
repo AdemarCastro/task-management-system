@@ -16,6 +16,7 @@ export type AuthResponse = {
 export type Task = {
   id: string;
   category: string | null;
+  category_name?: string | null;
   title: string;
   description: string;
   status: string;
@@ -37,12 +38,16 @@ export type Category = {
 export type TaskShare = {
   id: string;
   task: string;
+  task_title: string;
   recipient: string;
+  recipient_display_email: string;
   shared_by: string;
   permission: 'viewer' | 'editor';
   status: 'pending' | 'accepted' | 'rejected';
   created_at: string;
   responded_at: string | null;
+  can_respond: boolean;
+  can_cancel: boolean;
 };
 
 export type PaginatedResponse<T> = {
@@ -70,6 +75,7 @@ export type TaskFilters = {
   due_before?: string;
   ordering?: string;
   page?: number;
+  page_size?: number;
 };
 
 function authToken() {
@@ -90,8 +96,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   });
 
   if (!response.ok) {
+    if (response.status === 401 && token) {
+      localStorage.removeItem('access_token');
+      window.dispatchEvent(new Event('auth:expired'));
+    }
     const payload = (await response.json().catch(() => null)) as
-      | { error?: { message?: string } }
+      | { error?: { message?: string; details?: unknown } }
       | null;
     throw new Error(payload?.error?.message ?? `API request failed: ${response.status}`);
   }
@@ -175,6 +185,7 @@ export const apiClient = {
     if (params.due_before) query.set('due_before', params.due_before);
     if (params.ordering) query.set('ordering', params.ordering);
     if (params.page) query.set('page', String(params.page));
+    if (params.page_size) query.set('page_size', String(params.page_size));
     const suffix = query.size ? `?${query.toString()}` : '';
     return normalizeList(await request<PaginatedResponse<Task> | Task[]>(`/tasks/${suffix}`));
   },
@@ -202,4 +213,5 @@ export const apiClient = {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     }),
+  deleteShare: (shareId: string) => request<void>(`/shares/${shareId}/`, { method: 'DELETE' }),
 };

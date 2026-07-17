@@ -29,12 +29,32 @@ class TaskSerializer(serializers.ModelSerializer):
             "updated_at",
             "access_role",
         ]
-        read_only_fields = ["id", "holiday_warning", "version", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "status",
+            "holiday_warning",
+            "version",
+            "created_at",
+            "updated_at",
+            "access_role",
+        ]
 
     def validate_category(self, category):
         request = self.context["request"]
+
+        if self.instance and self.instance.owner_id != request.user.id:
+            if category is None and self.instance.category_id is None:
+                return category
+            if category and category.id == self.instance.category_id:
+                return category
+            raise serializers.ValidationError(
+                "Only the task owner can change its category."
+            )
+
         if category and category.owner_id != request.user.id:
-            raise serializers.ValidationError("Category does not belong to the current user.")
+            raise serializers.ValidationError(
+                "Category does not belong to the task owner."
+            )
         return category
 
     def get_access_role(self, task):

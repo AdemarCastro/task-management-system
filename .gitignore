@@ -10,6 +10,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .coverage
+backend/coverage.xml
 htmlcov/
 backend/.venv/
 backend/staticfiles/

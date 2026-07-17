@@ -43,7 +43,12 @@ class PasswordResetToken(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        indexes = [models.Index(fields=["user", "expires_at"])]
+        indexes = [
+            models.Index(
+                fields=["user", "expires_at"],
+                name="accounts_pa_user_id_5b11d7_idx",
+            )
+        ]
 
     def __str__(self) -> str:
         return f"Password reset for {self.user_id}"

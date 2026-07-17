@@ -9,7 +9,7 @@ try {
   await driver.get(appUrl);
   await driver.wait(until.elementLocated(By.css('h1')), 10000);
   const title = await driver.findElement(By.css('h1')).getText();
-  if (!title.includes('Task Management System')) {
+  if (!title.includes('Gerenciamento colaborativo de tarefas')) {
     throw new Error(`Unexpected title: ${title}`);
   }
 } finally {

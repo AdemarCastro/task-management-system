@@ -1,0 +1,35 @@
+name: Package source
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build source archive
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create clean source ZIP
+        run: |
+          zip -r task-management-system-core-finalized-v2.zip . \
+            -x '.git/*' \
+            -x '.env' \
+            -x 'backend/.venv/*' \
+            -x 'backend/.pytest_cache/*' \
+            -x 'backend/.coverage' \
+            -x 'backend/coverage.xml' \
+            -x 'frontend/node_modules/*' \
+            -x 'frontend/dist/*' \
+            -x '**/__pycache__/*'
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: task-management-system-core-finalized-v2
+          path: task-management-system-core-finalized-v2.zip
+          if-no-files-found: error
+          retention-days: 7

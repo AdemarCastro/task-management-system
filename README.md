@@ -505,7 +505,7 @@ docker compose exec frontend npm run test
 ### Selenium E2E
 
 ```bash
-docker compose run --rm selenium
+docker compose run --rm e2e
 ```
 
 Cenários principais:
@@ -1242,6 +1242,33 @@ Antes do envio:
 - O envio pelo SES pode exigir verificação de remetentes e destinatários em ambiente sandbox.
 - O projeto não utiliza Redis, Kafka, RabbitMQ ou Prometheus porque o escopo não justifica o custo operacional.
 - O C4 nível 4 não foi criado: o diagrama de classes e o código já fornecem o nível de detalhe necessário.
+
+## Passos finais em ferramentas externas
+
+Depois que a validacao local estiver verde, finalize a entrega fora do repositorio nesta ordem:
+
+1. **GitHub:** publique a branch `main`, confirme que o repositorio esta publico e verifique se o GitHub Actions executou `CI` com sucesso no ultimo commit.
+2. **Amazon Cognito:** crie o User Pool, habilite Managed Login, configure o app client publico sem client secret e cadastre exatamente as URLs de callback/logout do frontend publicado.
+3. **Google Identity:** se o login Google entrar no escopo final, crie o OAuth client, configure a tela de consentimento e conecte as credenciais no Cognito como identity provider.
+4. **AWS Backend:** crie ECR, RDS PostgreSQL, SQS com DLQ, SES, ECS Fargate, ALB e Secrets Manager. Injete as variaveis do `.env.example` como secrets/vars, sem versionar credenciais.
+5. **AWS Frontend:** publique o frontend no Amplify Hosting ou servico equivalente, configure `VITE_API_BASE_URL`, `VITE_COGNITO_DOMAIN`, `VITE_COGNITO_APP_CLIENT_ID`, `VITE_COGNITO_REDIRECT_URI` e `VITE_COGNITO_LOGOUT_URI`.
+6. **GitHub Deploy:** preencha `AWS_ROLE_TO_ASSUME`, `AWS_REGION`, `ECR_REPOSITORY`, `ECS_CLUSTER`, `ECS_SERVICE`, `ECS_CONTAINER_NAME` e as variaveis `VITE_*` usadas pelo workflow de deploy.
+7. **Banco de producao:** execute migrations no backend publicado e, se precisar preparar demonstracao, rode `python manage.py seed_demo` somente em ambiente controlado.
+8. **Smoke test publicado:** valide health, readiness, login, criacao de categoria, CRUD de tarefa, filtros, concluir/reabrir, compartilhamento e envio/registro do evento assincrono.
+9. **Observabilidade:** confirme logs no CloudWatch, alarmes de ECS/Lambda/SQS/DLQ/RDS e ausencia de tokens ou segredos nos logs.
+10. **Entrega:** substitua os placeholders `<URL_...>` no README, crie a tag `v1.0.0`, salve as evidencias de teste e envie os links para `recrutamento@advicehealth.com.br`.
+
+Comandos locais recomendados antes da publicacao:
+
+```bash
+docker compose run --rm backend ruff check .
+docker compose run --rm backend ruff format --check .
+docker compose run --rm backend pytest --cov=apps --cov-report=term-missing
+docker compose run --rm frontend npm run lint
+docker compose run --rm frontend npm run test
+docker compose run --rm frontend npm run build
+docker compose run --rm e2e
+```
 
 ## Entrega
 

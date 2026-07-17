@@ -1,4 +1,3 @@
-import { CheckCircle2, Filter, Share2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { AuthPanel } from '../features/auth/AuthPanel';
@@ -10,42 +9,20 @@ export function App() {
 
   useEffect(() => {
     apiClient
-      .health()
+      .readiness()
       .then(() => setApiStatus('online'))
-      .catch(() => setApiStatus('indisponível'));
+      .catch(() => setApiStatus('indisponivel'));
   }, []);
 
   return (
     <main className="shell">
-      <section className="hero">
+      <header className="app-header">
         <div>
-          <p className="eyebrow">Teste prático Python Back-end</p>
-          <h1>Task Management System</h1>
-          <p className="subtitle">
-            Monorepo pronto para evoluir CRUD, categorias, compartilhamento, filtros,
-            Cognito, BrasilAPI e automações AWS.
-          </p>
+          <p className="eyebrow">Task Management System</p>
+          <h1>Gerenciamento colaborativo de tarefas</h1>
         </div>
         <AuthPanel apiStatus={apiStatus} />
-      </section>
-
-      <section className="feature-grid" aria-label="Principais capacidades">
-        <article>
-          <CheckCircle2 aria-hidden="true" />
-          <strong>Tarefas</strong>
-          <span>Criação, conclusão, reabertura, prioridade e prazo.</span>
-        </article>
-        <article>
-          <Filter aria-hidden="true" />
-          <strong>Filtros</strong>
-          <span>Status, categoria, busca, ordenação e paginação.</span>
-        </article>
-        <article>
-          <Share2 aria-hidden="true" />
-          <strong>Compartilhamento</strong>
-          <span>Convites com permissões viewer/editor e notificação assíncrona.</span>
-        </article>
-      </section>
+      </header>
 
       <TaskList />
     </main>

@@ -21,7 +21,9 @@ describe('App', () => {
   it('renders the application shell', async () => {
     render(<App />);
 
-    expect(screen.getByRole('heading', { name: /Task Management System/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /Gerenciamento colaborativo de tarefas/i }),
+    ).toBeInTheDocument();
     expect(await screen.findByText('online')).toBeInTheDocument();
   });
 });

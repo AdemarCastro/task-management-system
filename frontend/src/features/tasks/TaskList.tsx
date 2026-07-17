@@ -1,7 +1,7 @@
-import { Check, Edit2, RotateCcw, Send, Trash2 } from 'lucide-react';
+import { Check, Edit2, RotateCcw, Send, Trash2, X } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
-import { apiClient, Category, Task, TaskShare } from '../../services/apiClient';
+import { apiClient, Category, Task, TaskPayload, TaskShare } from '../../services/apiClient';
 
 type TaskFormState = {
   title: string;
@@ -58,12 +58,21 @@ export function TaskList() {
   const [count, setCount] = useState(0);
   const [shareTaskId, setShareTaskId] = useState('');
   const [recipientEmail, setRecipientEmail] = useState('');
-  const [sharePermission, setSharePermission] = useState('viewer');
+  const [sharePermission, setSharePermission] = useState<'viewer' | 'editor'>('viewer');
   const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState('');
 
   const categoryById = useMemo(
     () => new Map(categories.map((category) => [category.id, category])),
     [categories],
+  );
+  const editingTask = useMemo(
+    () => tasks.find((task) => task.id === editingTaskId) ?? null,
+    [editingTaskId, tasks],
+  );
+  const ownerTasks = useMemo(
+    () => tasks.filter((task) => task.access_role === 'owner'),
+    [tasks],
   );
 
   const loadCategories = useCallback(async () => {
@@ -92,35 +101,23 @@ export function TaskList() {
   }, []);
 
   useEffect(() => {
-    Promise.all([apiClient.categories(), apiClient.shares()])
-      .then(([categoryResponse, shareResponse]) => {
-        setCategories(categoryResponse.items);
-        setShares(shareResponse.items);
-      })
-      .catch((error: Error) => setMessage(error.message));
-  }, []);
+    Promise.all([loadCategories(), loadShares()]).catch((error: Error) => setMessage(error.message));
+  }, [loadCategories, loadShares]);
 
   useEffect(() => {
-    apiClient
-      .tasks({
-        status,
-        priority,
-        search,
-        category: categoryFilter,
-        due_after: dueAfter ? toApiDate(dueAfter) ?? undefined : undefined,
-        due_before: dueBefore ? toApiDate(dueBefore) ?? undefined : undefined,
-        ordering,
-        page,
-      })
-      .then((response) => {
-        setTasks(response.items);
-        setCount(response.count);
-      })
-      .catch((error: Error) => setMessage(error.message));
-  }, [categoryFilter, dueAfter, dueBefore, ordering, page, priority, search, status]);
+    loadTasks().catch((error: Error) => setMessage(error.message));
+  }, [loadTasks]);
+
+  function resetTaskForm() {
+    setTaskForm(emptyTaskForm);
+    setEditingTaskId(null);
+  }
 
   async function handleCategorySubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const wasEditing = Boolean(editingCategoryId);
+    setBusy('category');
+    setMessage('');
     try {
       if (editingCategoryId) {
         await apiClient.updateCategory(editingCategoryId, { name: categoryName, color: categoryColor });
@@ -130,23 +127,30 @@ export function TaskList() {
       setCategoryName('');
       setCategoryColor('#2563EB');
       setEditingCategoryId(null);
-      await loadCategories();
-      setMessage(editingCategoryId ? 'Categoria atualizada.' : 'Categoria criada.');
+      await Promise.all([loadCategories(), loadTasks()]);
+      setMessage(wasEditing ? 'Categoria atualizada.' : 'Categoria criada.');
     } catch (error) {
       setMessage((error as Error).message);
+    } finally {
+      setBusy('');
     }
   }
 
   async function handleTaskSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const payload = {
+    const payload: TaskPayload = {
       title: taskForm.title,
       description: taskForm.description,
       category: taskForm.category || null,
       priority: taskForm.priority,
       due_at: toApiDate(taskForm.due_at),
     };
+    if (editingTask?.access_role === 'editor') {
+      delete payload.category;
+    }
 
+    setBusy('task');
+    setMessage('');
     try {
       if (editingTaskId) {
         await apiClient.updateTask(editingTaskId, payload);
@@ -155,27 +159,33 @@ export function TaskList() {
         await apiClient.createTask(payload);
         setMessage('Tarefa criada.');
       }
-
-      setTaskForm(emptyTaskForm);
-      setEditingTaskId(null);
+      resetTaskForm();
       await loadTasks();
     } catch (error) {
       setMessage((error as Error).message);
+    } finally {
+      setBusy('');
     }
   }
 
   async function handleShareSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setBusy('share');
+    setMessage('');
     try {
       await apiClient.createShare(shareTaskId, {
         recipient_email: recipientEmail,
         permission: sharePermission,
       });
+      setShareTaskId('');
       setRecipientEmail('');
+      setSharePermission('viewer');
       setMessage('Convite enviado.');
       await loadShares();
     } catch (error) {
       setMessage((error as Error).message);
+    } finally {
+      setBusy('');
     }
   }
 
@@ -197,6 +207,8 @@ export function TaskList() {
   }
 
   async function completeTask(task: Task) {
+    setBusy(`task-${task.id}`);
+    setMessage('');
     try {
       if (task.status === 'completed') {
         await apiClient.reopenTask(task.id);
@@ -206,39 +218,78 @@ export function TaskList() {
       await loadTasks();
     } catch (error) {
       setMessage((error as Error).message);
+    } finally {
+      setBusy('');
     }
   }
 
-  async function deleteTask(taskId: string) {
+  async function deleteTask(task: Task) {
+    if (!window.confirm(`Excluir a tarefa "${task.title}"?`)) return;
+    setBusy(`task-${task.id}`);
+    setMessage('');
     try {
-      await apiClient.deleteTask(taskId);
-      await loadTasks();
+      await apiClient.deleteTask(task.id);
+      if (editingTaskId === task.id) resetTaskForm();
+      await Promise.all([loadTasks(), loadShares()]);
+      setMessage('Tarefa excluida.');
     } catch (error) {
       setMessage((error as Error).message);
+    } finally {
+      setBusy('');
     }
   }
 
-  async function deleteCategory(categoryId: string) {
+  async function deleteCategory(category: Category) {
+    if (!window.confirm(`Excluir a categoria "${category.name}"?`)) return;
+    setBusy(`category-${category.id}`);
+    setMessage('');
     try {
-      await apiClient.deleteCategory(categoryId);
-      await loadCategories();
-      await loadTasks();
+      await apiClient.deleteCategory(category.id);
+      if (editingCategoryId === category.id) {
+        setEditingCategoryId(null);
+        setCategoryName('');
+        setCategoryColor('#2563EB');
+      }
+      await Promise.all([loadCategories(), loadTasks()]);
+      setMessage('Categoria excluida.');
     } catch (error) {
       setMessage((error as Error).message);
+    } finally {
+      setBusy('');
     }
   }
 
   async function decideShare(shareId: string, decision: 'accepted' | 'rejected') {
+    setBusy(`share-${shareId}`);
+    setMessage('');
     try {
       await apiClient.decideShare(shareId, decision);
-      await loadShares();
-      await loadTasks();
+      await Promise.all([loadShares(), loadTasks()]);
+      setMessage(decision === 'accepted' ? 'Convite aceito.' : 'Convite recusado.');
     } catch (error) {
       setMessage((error as Error).message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function cancelShare(share: TaskShare) {
+    if (!window.confirm(`Remover o compartilhamento com ${share.recipient_display_email}?`)) return;
+    setBusy(`share-${share.id}`);
+    setMessage('');
+    try {
+      await apiClient.deleteShare(share.id);
+      await Promise.all([loadShares(), loadTasks()]);
+      setMessage('Compartilhamento removido.');
+    } catch (error) {
+      setMessage((error as Error).message);
+    } finally {
+      setBusy('');
     }
   }
 
   const totalPages = Math.max(1, Math.ceil(count / 20));
+  const editorCategoryLocked = editingTask?.access_role === 'editor';
 
   return (
     <section className="workspace">
@@ -247,7 +298,7 @@ export function TaskList() {
           <h2>Tarefas</h2>
           <p className="muted">{count} registros</p>
         </div>
-        {message ? <p className="status-message">{message}</p> : null}
+        {message ? <p className="status-message" role="status">{message}</p> : null}
       </div>
 
       <div className="workspace-grid">
@@ -274,17 +325,26 @@ export function TaskList() {
             <label>
               Categoria
               <select
+                disabled={editorCategoryLocked}
                 name="category"
                 value={taskForm.category}
                 onChange={(event) => setTaskForm({ ...taskForm, category: event.target.value })}
               >
                 <option value="">Sem categoria</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
+                {editorCategoryLocked && taskForm.category ? (
+                  <option value={taskForm.category}>
+                    {editingTask?.category_name ?? 'Categoria do proprietario'}
                   </option>
-                ))}
+                ) : null}
+                {!editorCategoryLocked
+                  ? categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))
+                  : null}
               </select>
+              {editorCategoryLocked ? <small className="muted">Somente o proprietario altera a categoria.</small> : null}
             </label>
             <label>
               Prioridade
@@ -309,18 +369,11 @@ export function TaskList() {
             />
           </label>
           <div className="button-row">
-            <button className="primary-button" type="submit">
-              {editingTaskId ? 'Atualizar' : 'Criar'}
+            <button className="primary-button" disabled={busy === 'task'} type="submit">
+              {busy === 'task' ? 'Salvando...' : editingTaskId ? 'Atualizar' : 'Criar'}
             </button>
             {editingTaskId ? (
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => {
-                  setEditingTaskId(null);
-                  setTaskForm(emptyTaskForm);
-                }}
-              >
+              <button className="secondary-button" disabled={busy === 'task'} type="button" onClick={resetTaskForm}>
                 Cancelar
               </button>
             ) : null}
@@ -346,8 +399,8 @@ export function TaskList() {
                 value={categoryColor}
                 onChange={(event) => setCategoryColor(event.target.value)}
               />
-              <button className="secondary-button" type="submit">
-                {editingCategoryId ? 'Atualizar' : 'Criar'}
+              <button className="secondary-button" disabled={busy === 'category'} type="submit">
+                {busy === 'category' ? 'Salvando...' : editingCategoryId ? 'Atualizar' : 'Criar'}
               </button>
               {editingCategoryId ? (
                 <button
@@ -370,12 +423,18 @@ export function TaskList() {
                   {category.name}
                   <button
                     aria-label={`Editar categoria ${category.name}`}
+                    disabled={Boolean(busy)}
                     type="button"
                     onClick={() => startEditingCategory(category)}
                   >
                     <Edit2 size={14} />
                   </button>
-                  <button type="button" onClick={() => deleteCategory(category.id)}>
+                  <button
+                    aria-label={`Excluir categoria ${category.name}`}
+                    disabled={Boolean(busy)}
+                    type="button"
+                    onClick={() => deleteCategory(category)}
+                  >
                     <Trash2 size={14} />
                   </button>
                 </span>
@@ -394,7 +453,7 @@ export function TaskList() {
                 onChange={(event) => setShareTaskId(event.target.value)}
               >
                 <option value="">Selecione</option>
-                {tasks.map((task) => (
+                {ownerTasks.map((task) => (
                   <option key={task.id} value={task.id}>
                     {task.title}
                   </option>
@@ -417,17 +476,18 @@ export function TaskList() {
                 <select
                   name="permission"
                   value={sharePermission}
-                  onChange={(event) => setSharePermission(event.target.value)}
+                  onChange={(event) => setSharePermission(event.target.value as 'viewer' | 'editor')}
                 >
                   <option value="viewer">Viewer</option>
                   <option value="editor">Editor</option>
                 </select>
               </label>
             </div>
-            <button className="primary-button" type="submit">
+            <button className="primary-button" disabled={busy === 'share' || ownerTasks.length === 0} type="submit">
               <Send size={16} />
-              Enviar
+              {busy === 'share' ? 'Enviando...' : 'Enviar'}
             </button>
+            {ownerTasks.length === 0 ? <small className="muted">Crie uma tarefa propria para compartilhar.</small> : null}
           </form>
         </div>
       </div>
@@ -485,7 +545,10 @@ export function TaskList() {
         <select
           aria-label="Ordenacao"
           value={ordering}
-          onChange={(event) => setOrdering(event.target.value)}
+          onChange={(event) => {
+            setOrdering(event.target.value);
+            setPage(1);
+          }}
         >
           <option value="-created_at">Mais recentes</option>
           <option value="due_at">Prazo</option>
@@ -536,10 +599,8 @@ export function TaskList() {
                   <strong>{task.title}</strong>
                   {task.holiday_warning ? <small>{task.holiday_warning}</small> : null}
                 </td>
-                <td>{task.category ? categoryById.get(task.category)?.name ?? '-' : '-'}</td>
-                <td>
-                  <span className="pill">{task.status}</span>
-                </td>
+                <td>{task.category_name ?? (task.category ? categoryById.get(task.category)?.name ?? '-' : '-')}</td>
+                <td><span className="pill">{task.status}</span></td>
                 <td>{task.priority}</td>
                 <td>{formatDate(task.due_at)}</td>
                 <td>
@@ -548,6 +609,7 @@ export function TaskList() {
                       <>
                         <button
                           aria-label={`Editar tarefa ${task.title}`}
+                          disabled={Boolean(busy)}
                           type="button"
                           onClick={() => startEditing(task)}
                         >
@@ -555,6 +617,7 @@ export function TaskList() {
                         </button>
                         <button
                           aria-label={`${task.status === 'completed' ? 'Reabrir' : 'Concluir'} tarefa ${task.title}`}
+                          disabled={Boolean(busy)}
                           type="button"
                           onClick={() => completeTask(task)}
                         >
@@ -565,8 +628,9 @@ export function TaskList() {
                     {task.access_role === 'owner' ? (
                       <button
                         aria-label={`Excluir tarefa ${task.title}`}
+                        disabled={Boolean(busy)}
                         type="button"
-                        onClick={() => deleteTask(task.id)}
+                        onClick={() => deleteTask(task)}
                       >
                         <Trash2 size={16} />
                       </button>
@@ -577,23 +641,19 @@ export function TaskList() {
               </tr>
             ))}
             {!tasks.length ? (
-              <tr>
-                <td colSpan={6}>Nenhuma tarefa encontrada.</td>
-              </tr>
+              <tr><td colSpan={6}>Nenhuma tarefa encontrada.</td></tr>
             ) : null}
           </tbody>
         </table>
       </div>
 
       <div className="pagination">
-        <button disabled={page <= 1} type="button" onClick={() => setPage((value) => value - 1)}>
+        <button disabled={page <= 1 || Boolean(busy)} type="button" onClick={() => setPage((value) => value - 1)}>
           Anterior
         </button>
-        <span>
-          {page} / {totalPages}
-        </span>
+        <span>{page} / {totalPages}</span>
         <button
-          disabled={page >= totalPages}
+          disabled={page >= totalPages || Boolean(busy)}
           type="button"
           onClick={() => setPage((value) => value + 1)}
         >
@@ -602,24 +662,36 @@ export function TaskList() {
       </div>
 
       <div className="share-list">
-        <h3>Convites</h3>
+        <h3>Convites e compartilhamentos</h3>
         {shares.map((share) => (
           <article key={share.id}>
-            <span>{share.task}</span>
+            <span>{share.task_title}</span>
+            <span>{share.recipient_display_email}</span>
             <strong>{share.permission}</strong>
             <em>{share.status}</em>
-            {share.status === 'pending' ? (
+            {share.can_respond ? (
               <div>
-                <button type="button" onClick={() => decideShare(share.id, 'accepted')}>
+                <button disabled={Boolean(busy)} type="button" onClick={() => decideShare(share.id, 'accepted')}>
                   Aceitar
                 </button>
-                <button type="button" onClick={() => decideShare(share.id, 'rejected')}>
+                <button disabled={Boolean(busy)} type="button" onClick={() => decideShare(share.id, 'rejected')}>
                   Recusar
                 </button>
               </div>
             ) : null}
+            {share.can_cancel ? (
+              <button
+                aria-label={`Remover compartilhamento ${share.task_title}`}
+                disabled={Boolean(busy)}
+                type="button"
+                onClick={() => cancelShare(share)}
+              >
+                <X size={16} /> Remover
+              </button>
+            ) : null}
           </article>
         ))}
+        {!shares.length ? <p className="muted">Nenhum convite ou compartilhamento.</p> : null}
       </div>
     </section>
   );

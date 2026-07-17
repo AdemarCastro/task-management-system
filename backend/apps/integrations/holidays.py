@@ -9,8 +9,12 @@ class HolidayClient:
         try:
             response = requests.get(url, timeout=settings.BRASIL_API_TIMEOUT_SECONDS)
             response.raise_for_status()
-        except requests.RequestException:
+            holidays = response.json()
+        except (requests.RequestException, ValueError):
+            return None
+
+        if not isinstance(holidays, list):
             return None
 
         date_iso = date.isoformat()
-        return next((item for item in response.json() if item.get("date") == date_iso), None)
+        return next((item for item in holidays if item.get("date") == date_iso), None)

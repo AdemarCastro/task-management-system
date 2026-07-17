@@ -1,4 +1,9 @@
+from datetime import date, datetime, time
+from enum import Enum
+from uuid import UUID
+
 from django.db import transaction
+from django.db.models import Model
 
 from apps.audit.models import AuditLog
 from apps.integrations.holidays import HolidayClient
@@ -25,7 +30,12 @@ class TaskService:
                 setattr(task, field, value)
             task.version += 1
             task.save()
-            AuditLog.objects.create(actor=user, task=task, action="task.updated", changes=data)
+            AuditLog.objects.create(
+                actor=user,
+                task=task,
+                action="task.updated",
+                changes=self._json_safe(data),
+            )
             return task
 
     def complete(self, *, user, task: Task) -> Task:
@@ -53,3 +63,18 @@ class TaskService:
             return ""
         holiday = self.holiday_client.get_national_holiday(due_at.date())
         return f"Prazo cai no feriado: {holiday['name']}" if holiday else ""
+
+    def _json_safe(self, value):
+        if isinstance(value, dict):
+            return {str(key): self._json_safe(item) for key, item in value.items()}
+        if isinstance(value, list | tuple | set):
+            return [self._json_safe(item) for item in value]
+        if isinstance(value, datetime | date | time):
+            return value.isoformat()
+        if isinstance(value, UUID):
+            return str(value)
+        if isinstance(value, Enum):
+            return value.value
+        if isinstance(value, Model):
+            return str(value.pk)
+        return value

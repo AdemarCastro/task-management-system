@@ -2,13 +2,19 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.accounts.models import UserAccount
+from apps.accounts.services import issue_access_token
 from apps.sharing.models import ShareStatus
 
 
 @pytest.fixture
 def api_client():
+    owner = UserAccount.objects.create(
+        cognito_sub="local:test-owner",
+        email="owner@example.com",
+        name="Owner",
+    )
     client = APIClient()
-    client.credentials(HTTP_AUTHORIZATION="Bearer dev-token")
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_access_token(owner)}")
     return client
 
 
@@ -67,26 +73,93 @@ def test_owner_can_share_and_recipient_can_accept(api_client):
     assert share_response.json()["status"] == ShareStatus.PENDING
 
     recipient_client = APIClient()
-    recipient_client.credentials(HTTP_AUTHORIZATION="Bearer recipient-token")
-
-    with pytest.MonkeyPatch.context() as monkeypatch:
-        monkeypatch.setattr(
-            "apps.accounts.authentication.CognitoJWTAuthentication._claims_from_token",
-            lambda _self, _token: type(
-                "Claims",
-                (),
-                {"sub": recipient.cognito_sub, "email": recipient.email, "name": recipient.name},
-            )(),
-        )
-        accept_response = recipient_client.patch(
-            f"/api/v1/shares/{share_response.json()['id']}/",
-            {"status": "accepted"},
-            format="json",
-        )
+    recipient_client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_access_token(recipient)}")
+    accept_response = recipient_client.patch(
+        f"/api/v1/shares/{share_response.json()['id']}/",
+        {"status": "accepted"},
+        format="json",
+    )
 
     assert accept_response.status_code == 200
     assert accept_response.json()["status"] == ShareStatus.ACCEPTED
     assert accept_response.json()["responded_at"]
+
+
+@pytest.mark.django_db
+def test_task_update_audit_serializes_category_and_datetime(api_client, monkeypatch):
+    category_response = api_client.post(
+        "/api/v1/categories/",
+        {"name": "Planning", "color": "#2563EB"},
+        format="json",
+    )
+    task_response = api_client.post(
+        "/api/v1/tasks/",
+        {"title": "Initial title"},
+        format="json",
+    )
+    monkeypatch.setattr(
+        "apps.tasks.services.HolidayClient.get_national_holiday",
+        lambda _client, _date: None,
+    )
+
+    update_response = api_client.patch(
+        f"/api/v1/tasks/{task_response.json()['id']}/",
+        {
+            "title": "Updated title",
+            "category": category_response.json()["id"],
+            "due_at": "2026-07-20T14:30:00Z",
+        },
+        format="json",
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.json()["access_role"] == "owner"
+    from apps.audit.models import AuditLog
+
+    audit = AuditLog.objects.get(action="task.updated")
+    assert audit.changes["category"] == category_response.json()["id"]
+    assert audit.changes["due_at"].startswith("2026-07-20T")
+
+
+@pytest.mark.django_db
+def test_editor_can_update_but_cannot_delete_shared_task(api_client):
+    recipient = UserAccount.objects.create(
+        cognito_sub="local:editor",
+        email="editor@example.com",
+        name="Editor",
+    )
+    task_response = api_client.post(
+        "/api/v1/tasks/",
+        {"title": "Protected task"},
+        format="json",
+    )
+    share_response = api_client.post(
+        f"/api/v1/tasks/{task_response.json()['id']}/shares/",
+        {"recipient_email": recipient.email, "permission": "editor"},
+        format="json",
+    )
+
+    recipient_client = APIClient()
+    recipient_client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_access_token(recipient)}")
+    assert (
+        recipient_client.patch(
+            f"/api/v1/shares/{share_response.json()['id']}/",
+            {"status": "accepted"},
+            format="json",
+        ).status_code
+        == 200
+    )
+
+    task_id = task_response.json()["id"]
+    update_response = recipient_client.patch(
+        f"/api/v1/tasks/{task_id}/",
+        {"title": "Updated by editor"},
+        format="json",
+    )
+    delete_response = recipient_client.delete(f"/api/v1/tasks/{task_id}/")
+
+    assert update_response.status_code == 200
+    assert delete_response.status_code == 403
 
 
 @pytest.mark.django_db

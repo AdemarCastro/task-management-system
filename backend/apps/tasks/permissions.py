@@ -8,6 +8,9 @@ class CanAccessTask(BasePermission):
         if obj.owner_id == request.user.id:
             return True
 
+        if request.method == "DELETE":
+            return False
+
         share = TaskShare.objects.filter(
             task=obj,
             recipient=request.user,

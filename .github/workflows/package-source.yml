@@ -3,6 +3,8 @@ name: Package source
 on:
   pull_request:
     branches: ["main"]
+  push:
+    branches: ["ai/core-finalized-v2"]
   workflow_dispatch:
 
 permissions:

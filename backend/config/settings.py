@@ -63,6 +63,13 @@ TEMPLATES = [
     }
 ]
 
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+
 DATABASES = {
     "default": dj_database_url.config(
         default=os.getenv("DATABASE_URL", "sqlite:///db.sqlite3"),
@@ -94,6 +101,9 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "common.pagination.DefaultPageNumberPagination",
     "PAGE_SIZE": 20,
     "EXCEPTION_HANDLER": "common.exceptions.api_exception_handler",
+    "DEFAULT_THROTTLE_RATES": {
+        "auth": "10/minute",
+    },
 }
 
 SPECTACULAR_SETTINGS = {
@@ -110,6 +120,12 @@ SQS_TASK_EVENTS_URL = os.getenv("SQS_TASK_EVENTS_URL", "")
 SES_FROM_EMAIL = os.getenv("SES_FROM_EMAIL", "")
 BRASIL_API_BASE_URL = os.getenv("BRASIL_API_BASE_URL", "https://brasilapi.com.br/api")
 BRASIL_API_TIMEOUT_SECONDS = float(os.getenv("BRASIL_API_TIMEOUT_SECONDS", "3"))
+LOCAL_AUTH_ISSUER = os.getenv("LOCAL_AUTH_ISSUER", "task-management-local")
+LOCAL_AUTH_TOKEN_LIFETIME_MINUTES = int(os.getenv("LOCAL_AUTH_TOKEN_LIFETIME_MINUTES", "60"))
+PASSWORD_RESET_TIMEOUT_MINUTES = int(os.getenv("PASSWORD_RESET_TIMEOUT_MINUTES", "30"))
+FRONTEND_PUBLIC_URL = os.getenv("FRONTEND_PUBLIC_URL", "http://localhost:5173")
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@task-management.local")
 
 if COGNITO_USER_POOL_ID:
     parsed_region = COGNITO_USER_POOL_ID.split("_", maxsplit=1)[0]

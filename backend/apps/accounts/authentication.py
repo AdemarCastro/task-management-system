@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from uuid import UUID
 
 import jwt
 import requests
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import authentication, exceptions
 
 from apps.accounts.models import UserAccount
@@ -25,6 +27,9 @@ class CognitoJWTAuthentication(authentication.BaseAuthentication):
     """
 
     keyword = "Bearer"
+
+    def authenticate_header(self, _request):
+        return self.keyword
 
     def authenticate(self, request):
         header = authentication.get_authorization_header(request).decode("utf-8")
@@ -47,12 +52,34 @@ class CognitoJWTAuthentication(authentication.BaseAuthentication):
         return user, None
 
     def _claims_from_token(self, token: str) -> CognitoClaims:
-        if token == "dev-token" and not settings.COGNITO_USER_POOL_ID:
+        if token == "dev-token" and settings.DEBUG and not settings.COGNITO_USER_POOL_ID:
             return CognitoClaims(
                 sub="local-dev-user",
                 email="dev@example.com",
                 name="Local Developer",
             )
+
+        try:
+            local_payload = jwt.decode(
+                token,
+                settings.SECRET_KEY,
+                algorithms=["HS256"],
+                issuer=settings.LOCAL_AUTH_ISSUER,
+            )
+        except jwt.PyJWTError:
+            local_payload = None
+
+        if local_payload and local_payload.get("auth_source") == "local":
+            if local_payload.get("token_use") != "access":
+                raise exceptions.AuthenticationFailed("Invalid token_use.")
+            try:
+                user = UserAccount.objects.get(
+                    id=UUID(local_payload["sub"]),
+                    is_active=True,
+                )
+            except (ObjectDoesNotExist, ValueError, KeyError) as exc:
+                raise exceptions.AuthenticationFailed("Invalid or expired token.") from exc
+            return CognitoClaims(sub=user.cognito_sub, email=user.email, name=user.name)
 
         if not settings.COGNITO_JWKS_URL:
             raise exceptions.AuthenticationFailed("Cognito is not configured.")
@@ -74,7 +101,7 @@ class CognitoJWTAuthentication(authentication.BaseAuthentication):
         if settings.COGNITO_APP_CLIENT_ID and client_id != settings.COGNITO_APP_CLIENT_ID:
             raise exceptions.AuthenticationFailed("Token audience is not allowed.")
 
-        if payload.get("token_use") not in {"access", "id"}:
+        if payload.get("token_use") != "access":
             raise exceptions.AuthenticationFailed("Invalid token_use.")
 
         return CognitoClaims(

@@ -1,7 +1,7 @@
 {
   "name": "task-management-system-frontend",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --max-warnings 0",
     "test": "vitest run",
-    "test:e2e": "node src/tests/e2e/smoke.test.mjs"
+    "test:e2e": "node src/tests/e2e/auth.test.mjs && node src/tests/e2e/tasks.test.mjs && node src/tests/e2e/sharing.test.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

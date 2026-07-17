@@ -11,6 +11,7 @@ class TaskSerializer(serializers.ModelSerializer):
         allow_null=True,
         required=False,
     )
+    category_name = serializers.CharField(source="category.name", read_only=True)
     access_role = serializers.SerializerMethodField()
 
     class Meta:
@@ -18,6 +19,7 @@ class TaskSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "category",
+            "category_name",
             "title",
             "description",
             "status",
@@ -31,6 +33,7 @@ class TaskSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
+            "category_name",
             "status",
             "holiday_warning",
             "version",

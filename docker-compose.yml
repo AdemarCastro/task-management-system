@@ -35,6 +35,8 @@ services:
       target: development
     env_file:
       - .env
+    environment:
+      VITE_API_BASE_URL: /api/v1
     ports:
       - "5173:5173"
     volumes:

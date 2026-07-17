@@ -43,6 +43,25 @@ button:disabled {
   margin-bottom: 24px;
 }
 
+.auth-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 48px;
+  align-items: center;
+  min-height: 560px;
+}
+
+.auth-intro {
+  max-width: 620px;
+  padding: 24px 0;
+}
+
+.auth-intro h2 {
+  max-width: 560px;
+  font-size: 3.2rem;
+  line-height: 1.05;
+}
+
 .eyebrow {
   margin: 0 0 8px;
   color: #047857;
@@ -92,6 +111,31 @@ h3 {
 
 .auth-panel {
   padding: 18px;
+}
+
+.auth-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.auth-panel-heading .eyebrow {
+  margin-bottom: 4px;
+}
+
+.auth-panel-heading h2 {
+  margin-bottom: 0;
+}
+
+.online-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #16a34a;
+  box-shadow: 0 0 0 4px #dcfce7;
+  flex: 0 0 auto;
+  margin: 5px;
 }
 
 .auth-panel dl {
@@ -246,6 +290,72 @@ input[type="color"] {
   width: 100%;
 }
 
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  border-bottom: 1px solid #e2e8f0;
+  margin: 16px 0;
+}
+
+.auth-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #64748b;
+  padding: 10px 8px;
+  font-weight: 800;
+}
+
+.auth-tabs button.active {
+  border-bottom-color: #2563eb;
+  color: #1d4ed8;
+}
+
+.auth-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.auth-form h3 {
+  margin-bottom: 0;
+}
+
+.auth-message,
+.auth-error {
+  border-radius: 6px;
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.auth-message {
+  background: #ecfdf5;
+  color: #166534;
+}
+
+.auth-error {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.auth-message a {
+  color: #166534;
+  font-weight: 800;
+}
+
+.link-button {
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  padding: 8px 0;
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-align: left;
+}
+
 .tag-list {
   display: flex;
   flex-wrap: wrap;
@@ -287,6 +397,14 @@ input[type="color"] {
 
 .filter-bar select {
   flex: 1 1 180px;
+}
+
+.filter-date {
+  flex: 1 1 210px;
+}
+
+.filter-date input {
+  min-height: 36px;
 }
 
 .task-panel {
@@ -354,11 +472,16 @@ input[type="color"] {
 
 @media (max-width: 860px) {
   .app-header,
+  .auth-layout,
   .workspace-grid {
     grid-template-columns: 1fr;
   }
 
   .share-list article {
     grid-template-columns: 1fr;
+  }
+
+  .auth-intro h2 {
+    font-size: 2.2rem;
   }
 }

@@ -1,4 +1,4 @@
-import { Check, RotateCcw, Send, Trash2 } from 'lucide-react';
+import { Check, Edit2, RotateCcw, Send, Trash2 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { apiClient, Category, Task, TaskShare } from '../../services/apiClient';
@@ -46,9 +46,13 @@ export function TaskList() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [categoryName, setCategoryName] = useState('');
   const [categoryColor, setCategoryColor] = useState('#2563EB');
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [status, setStatus] = useState('');
+  const [priority, setPriority] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [dueAfter, setDueAfter] = useState('');
+  const [dueBefore, setDueBefore] = useState('');
   const [ordering, setOrdering] = useState('-created_at');
   const [page, setPage] = useState(1);
   const [count, setCount] = useState(0);
@@ -70,14 +74,17 @@ export function TaskList() {
   const loadTasks = useCallback(async () => {
     const response = await apiClient.tasks({
       status,
+      priority,
       search,
       category: categoryFilter,
+      due_after: dueAfter ? toApiDate(dueAfter) ?? undefined : undefined,
+      due_before: dueBefore ? toApiDate(dueBefore) ?? undefined : undefined,
       ordering,
       page,
     });
     setTasks(response.items);
     setCount(response.count);
-  }, [categoryFilter, ordering, page, search, status]);
+  }, [categoryFilter, dueAfter, dueBefore, ordering, page, priority, search, status]);
 
   const loadShares = useCallback(async () => {
     const response = await apiClient.shares();
@@ -97,8 +104,11 @@ export function TaskList() {
     apiClient
       .tasks({
         status,
+        priority,
         search,
         category: categoryFilter,
+        due_after: dueAfter ? toApiDate(dueAfter) ?? undefined : undefined,
+        due_before: dueBefore ? toApiDate(dueBefore) ?? undefined : undefined,
         ordering,
         page,
       })
@@ -107,14 +117,24 @@ export function TaskList() {
         setCount(response.count);
       })
       .catch((error: Error) => setMessage(error.message));
-  }, [categoryFilter, ordering, page, search, status]);
+  }, [categoryFilter, dueAfter, dueBefore, ordering, page, priority, search, status]);
 
   async function handleCategorySubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await apiClient.createCategory({ name: categoryName, color: categoryColor });
-    setCategoryName('');
-    await loadCategories();
-    setMessage('Categoria salva.');
+    try {
+      if (editingCategoryId) {
+        await apiClient.updateCategory(editingCategoryId, { name: categoryName, color: categoryColor });
+      } else {
+        await apiClient.createCategory({ name: categoryName, color: categoryColor });
+      }
+      setCategoryName('');
+      setCategoryColor('#2563EB');
+      setEditingCategoryId(null);
+      await loadCategories();
+      setMessage(editingCategoryId ? 'Categoria atualizada.' : 'Categoria criada.');
+    } catch (error) {
+      setMessage((error as Error).message);
+    }
   }
 
   async function handleTaskSubmit(event: FormEvent<HTMLFormElement>) {
@@ -127,28 +147,42 @@ export function TaskList() {
       due_at: toApiDate(taskForm.due_at),
     };
 
-    if (editingTaskId) {
-      await apiClient.updateTask(editingTaskId, payload);
-      setMessage('Tarefa atualizada.');
-    } else {
-      await apiClient.createTask(payload);
-      setMessage('Tarefa criada.');
-    }
+    try {
+      if (editingTaskId) {
+        await apiClient.updateTask(editingTaskId, payload);
+        setMessage('Tarefa atualizada.');
+      } else {
+        await apiClient.createTask(payload);
+        setMessage('Tarefa criada.');
+      }
 
-    setTaskForm(emptyTaskForm);
-    setEditingTaskId(null);
-    await loadTasks();
+      setTaskForm(emptyTaskForm);
+      setEditingTaskId(null);
+      await loadTasks();
+    } catch (error) {
+      setMessage((error as Error).message);
+    }
   }
 
   async function handleShareSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await apiClient.createShare(shareTaskId, {
-      recipient_email: recipientEmail,
-      permission: sharePermission,
-    });
-    setRecipientEmail('');
-    setMessage('Convite enviado.');
-    await loadShares();
+    try {
+      await apiClient.createShare(shareTaskId, {
+        recipient_email: recipientEmail,
+        permission: sharePermission,
+      });
+      setRecipientEmail('');
+      setMessage('Convite enviado.');
+      await loadShares();
+    } catch (error) {
+      setMessage((error as Error).message);
+    }
+  }
+
+  function startEditingCategory(category: Category) {
+    setEditingCategoryId(category.id);
+    setCategoryName(category.name);
+    setCategoryColor(category.color);
   }
 
   function startEditing(task: Task) {
@@ -163,29 +197,45 @@ export function TaskList() {
   }
 
   async function completeTask(task: Task) {
-    if (task.status === 'completed') {
-      await apiClient.reopenTask(task.id);
-    } else {
-      await apiClient.completeTask(task.id);
+    try {
+      if (task.status === 'completed') {
+        await apiClient.reopenTask(task.id);
+      } else {
+        await apiClient.completeTask(task.id);
+      }
+      await loadTasks();
+    } catch (error) {
+      setMessage((error as Error).message);
     }
-    await loadTasks();
   }
 
   async function deleteTask(taskId: string) {
-    await apiClient.deleteTask(taskId);
-    await loadTasks();
+    try {
+      await apiClient.deleteTask(taskId);
+      await loadTasks();
+    } catch (error) {
+      setMessage((error as Error).message);
+    }
   }
 
   async function deleteCategory(categoryId: string) {
-    await apiClient.deleteCategory(categoryId);
-    await loadCategories();
-    await loadTasks();
+    try {
+      await apiClient.deleteCategory(categoryId);
+      await loadCategories();
+      await loadTasks();
+    } catch (error) {
+      setMessage((error as Error).message);
+    }
   }
 
   async function decideShare(shareId: string, decision: 'accepted' | 'rejected') {
-    await apiClient.decideShare(shareId, decision);
-    await loadShares();
-    await loadTasks();
+    try {
+      await apiClient.decideShare(shareId, decision);
+      await loadShares();
+      await loadTasks();
+    } catch (error) {
+      setMessage((error as Error).message);
+    }
   }
 
   const totalPages = Math.max(1, Math.ceil(count / 20));
@@ -274,7 +324,7 @@ export function TaskList() {
 
         <div className="side-stack">
           <form className="panel-form" onSubmit={handleCategorySubmit}>
-            <h3>Categorias</h3>
+            <h3>{editingCategoryId ? 'Editar categoria' : 'Categorias'}</h3>
             <div className="form-row compact">
               <input
                 aria-label="Nome da categoria"
@@ -290,14 +340,34 @@ export function TaskList() {
                 onChange={(event) => setCategoryColor(event.target.value)}
               />
               <button className="secondary-button" type="submit">
-                Salvar
+                {editingCategoryId ? 'Atualizar' : 'Criar'}
               </button>
+              {editingCategoryId ? (
+                <button
+                  className="link-button"
+                  type="button"
+                  onClick={() => {
+                    setEditingCategoryId(null);
+                    setCategoryName('');
+                    setCategoryColor('#2563EB');
+                  }}
+                >
+                  Cancelar
+                </button>
+              ) : null}
             </div>
             <div className="tag-list">
               {categories.map((category) => (
                 <span key={category.id} className="category-tag">
                   <span style={{ background: category.color }} />
                   {category.name}
+                  <button
+                    aria-label={`Editar categoria ${category.name}`}
+                    type="button"
+                    onClick={() => startEditingCategory(category)}
+                  >
+                    <Edit2 size={14} />
+                  </button>
                   <button type="button" onClick={() => deleteCategory(category.id)}>
                     <Trash2 size={14} />
                   </button>
@@ -375,6 +445,19 @@ export function TaskList() {
           <option value="completed">Concluidas</option>
         </select>
         <select
+          aria-label="Prioridade"
+          value={priority}
+          onChange={(event) => {
+            setPriority(event.target.value);
+            setPage(1);
+          }}
+        >
+          <option value="">Todas as prioridades</option>
+          <option value="high">Alta</option>
+          <option value="medium">Media</option>
+          <option value="low">Baixa</option>
+        </select>
+        <select
           aria-label="Filtrar categoria"
           value={categoryFilter}
           onChange={(event) => {
@@ -398,6 +481,30 @@ export function TaskList() {
           <option value="due_at">Prazo</option>
           <option value="priority">Prioridade</option>
         </select>
+        <label className="filter-date">
+          Prazo a partir de
+          <input
+            aria-label="Prazo a partir de"
+            type="datetime-local"
+            value={dueAfter}
+            onChange={(event) => {
+              setDueAfter(event.target.value);
+              setPage(1);
+            }}
+          />
+        </label>
+        <label className="filter-date">
+          Prazo ate
+          <input
+            aria-label="Prazo ate"
+            type="datetime-local"
+            value={dueBefore}
+            onChange={(event) => {
+              setDueBefore(event.target.value);
+              setPage(1);
+            }}
+          />
+        </label>
       </div>
 
       <div className="task-panel">
@@ -427,15 +534,34 @@ export function TaskList() {
                 <td>{formatDate(task.due_at)}</td>
                 <td>
                   <div className="table-actions">
-                    <button type="button" onClick={() => startEditing(task)}>
-                      Editar
-                    </button>
-                    <button type="button" onClick={() => completeTask(task)}>
-                      {task.status === 'completed' ? <RotateCcw size={16} /> : <Check size={16} />}
-                    </button>
-                    <button type="button" onClick={() => deleteTask(task.id)}>
-                      <Trash2 size={16} />
-                    </button>
+                    {task.access_role === 'owner' || task.access_role === 'editor' ? (
+                      <>
+                        <button
+                          aria-label={`Editar tarefa ${task.title}`}
+                          type="button"
+                          onClick={() => startEditing(task)}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          aria-label={`${task.status === 'completed' ? 'Reabrir' : 'Concluir'} tarefa ${task.title}`}
+                          type="button"
+                          onClick={() => completeTask(task)}
+                        >
+                          {task.status === 'completed' ? <RotateCcw size={16} /> : <Check size={16} />}
+                        </button>
+                      </>
+                    ) : null}
+                    {task.access_role === 'owner' ? (
+                      <button
+                        aria-label={`Excluir tarefa ${task.title}`}
+                        type="button"
+                        onClick={() => deleteTask(task.id)}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    ) : null}
+                    {task.access_role === 'viewer' ? <span className="muted">Somente leitura</span> : null}
                   </div>
                 </td>
               </tr>

@@ -18,14 +18,27 @@ export function App() {
 
   useEffect(() => {
     if (!localStorage.getItem('access_token')) {
+      setAuthLoading(false);
       return;
     }
 
     apiClient
       .me()
       .then(setUser)
-      .catch(() => localStorage.removeItem('access_token'))
+      .catch(() => {
+        localStorage.removeItem('access_token');
+        setUser(null);
+      })
       .finally(() => setAuthLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const handleExpiredSession = () => {
+      setUser(null);
+      setAuthLoading(false);
+    };
+    window.addEventListener('auth:expired', handleExpiredSession);
+    return () => window.removeEventListener('auth:expired', handleExpiredSession);
   }, []);
 
   function handleLogout() {
